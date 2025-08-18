@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # MSSQL Database
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    networks:
+      - security_scanner_network
+
+  # Redis for Celery
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - security_scanner_network
+
+  # Backend API
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mssql+pyodbc://sa:YourStrong@Passw0rd@mssql:1433/security_scanner?driver=ODBC+Driver+17+for+SQL+Server
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - mssql
+      - redis
+    networks:
+      - security_scanner_network
+    volumes:
+      - ./scanners:/app/scanners
+
+  # Frontend
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - security_scanner_network
+
+volumes:
+  mssql_data:
+
+networks:
+  security_scanner_network:
+    driver: bridge
