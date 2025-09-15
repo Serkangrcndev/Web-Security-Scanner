@@ -54,7 +54,7 @@ export const scanAPI = {
 
   // Get scan results
   getScanResults: async (scanId: string) => {
-    const response = await api.get(`/scan/result/${scanId}`);
+    const response = await api.get(`/scan/results/${scanId}`);
     return response.data;
   },
 
@@ -67,6 +67,12 @@ export const scanAPI = {
   // Stop a scan
   stopScan: async (scanId: string) => {
     const response = await api.post(`/scan/stop/${scanId}`);
+    return response.data;
+  },
+
+  // Get available scanners
+  getScanners: async () => {
+    const response = await api.get('/scanners');
     return response.data;
   },
 };
@@ -141,83 +147,6 @@ export const authAPI = {
   getCurrentUser: async () => {
     const response = await api.get('/auth/me');
     return response.data;
-  },
-};
-
-// Mock data for development
-export const mockAPI = {
-  startScan: async (url: string) => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return {
-      scan_id: `scan_${Date.now()}`,
-      status: 'started',
-      url,
-      timestamp: new Date().toISOString(),
-    };
-  },
-
-  getScanStatus: async (scanId: string) => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return {
-      scan_id: scanId,
-      status: 'completed',
-      progress: 100,
-      vulnerabilities_found: 3,
-      timestamp: new Date().toISOString(),
-    };
-  },
-
-  getScanResults: async (scanId: string) => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return {
-      scan_id: scanId,
-      url: 'https://example.com',
-      status: 'completed',
-      vulnerabilities: [
-        {
-          id: 1,
-          title: 'SQL Injection Vulnerability',
-          description: 'Potential SQL injection point detected in login form',
-          severity: 'high',
-          cve: 'CVE-2024-1234',
-          cvss: 8.5,
-          type: 'Injection',
-          location: '/login',
-          timestamp: new Date().toISOString(),
-        },
-        {
-          id: 2,
-          title: 'XSS Cross-Site Scripting',
-          description: 'Reflected XSS vulnerability in search parameter',
-          severity: 'medium',
-          cve: 'CVE-2024-5678',
-          cvss: 6.1,
-          type: 'XSS',
-          location: '/search?q=',
-          timestamp: new Date().toISOString(),
-        },
-        {
-          id: 3,
-          title: 'Outdated SSL/TLS Version',
-          description: 'Server supports outdated TLS 1.0 protocol',
-          severity: 'low',
-          cve: 'CVE-2024-9012',
-          cvss: 3.1,
-          type: 'Cryptography',
-          location: 'TLS Configuration',
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      summary: {
-        total_vulnerabilities: 3,
-        critical: 0,
-        high: 1,
-        medium: 1,
-        low: 1,
-        security_score: 94.2,
-      },
-    };
   },
 };
 

@@ -4,14 +4,20 @@ import { useState, useEffect } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { 
-  Shield, 
-  Search, 
-  BarChart3, 
-  Download, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/Card';
+import {
+  Shield,
+  Search,
+  BarChart3,
+  Download,
+  AlertTriangle,
+  CheckCircle,
   Clock,
   Zap,
   TrendingUp,
@@ -37,129 +43,296 @@ import {
   LockKeyhole,
   Folder,
   Terminal,
-  Code2,
-  ShieldX,
-  AlertOctagon,
-  CheckCircle2,
-  Clock2,
   Timer,
   Play,
   Pause,
   Square,
   RotateCcw,
   Settings,
-  BarChart4,
   PieChart as PieChartIcon,
   TrendingDown,
-  Pulse,
   Heart,
-  Zap2,
-  Target2,
   Crosshair,
-  Binoculars,
-  Telescope,
-  Satellite,
   Wifi,
   WifiOff,
   Signal,
   SignalHigh,
   SignalMedium,
-  SignalLow
+  SignalLow,
 } from 'lucide-react';
-import { generateMockVulnerabilities, formatDate, getSeverityColor, formatSeverity } from '@/lib/utils';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
+import { formatDate, getSeverityColor, formatSeverity } from '@/lib/utils';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+} from 'recharts';
+import { scanAPI } from '@/services/api';
 import Link from 'next/link';
 
 export default function DashboardPage() {
   const [url, setUrl] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
-  const [vulnerabilities, setVulnerabilities] = useState(generateMockVulnerabilities());
+  const [vulnerabilities, setVulnerabilities] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [detectedThreats, setDetectedThreats] = useState(0);
-  const [securityScore, setSecurityScore] = useState(0);
+  const [securityScore, setSecurityScore] = useState(100);
   const [activeConnections, setActiveConnections] = useState(0);
   const [scanMode, setScanMode] = useState('stealth'); // stealth, aggressive, silent
   const [currentEngine, setCurrentEngine] = useState('Nmap');
+  const [currentScanId, setCurrentScanId] = useState<string | null>(null);
+  const [scanType, setScanType] = useState('quick');
+  const [scanResults, setScanResults] = useState<any>(null);
+  const [allScans, setAllScans] = useState<any[]>([]);
+  const [availableEngines, setAvailableEngines] = useState<any[]>([]);
 
   const { scrollYProgress } = useScroll();
   const y = useTransform(scrollYProgress, [0, 1], ['0%', '50%']);
 
-  // Mock scan simulation
+  // Backend'den tarayıcı durumlarını al
   useEffect(() => {
-    if (isScanning) {
-      const interval = setInterval(() => {
-        setScanProgress(prev => {
-          if (prev >= 100) {
-            setIsScanning(false);
-            return 100;
+    const fetchScanners = async () => {
+      try {
+        const response = await scanAPI.getScanners();
+
+        // Backend'den gelen scanner bilgilerini UI için hazırla
+        const engines = Object.keys(response.scanners).map(
+          (scannerKey, index) => {
+            const scannerName =
+              scannerKey.charAt(0).toUpperCase() + scannerKey.slice(1);
+            const icons = {
+              nmap: Network,
+              nuclei: Bug,
+              zap: Shield,
+              sqlmap: Database,
+              nikto: Search,
+              xss: Code,
+            };
+
+            const colors = [
+              'from-blue-500 to-cyan-500',
+              'from-green-500 to-emerald-500',
+              'from-purple-500 to-pink-500',
+              'from-red-500 to-orange-500',
+              'from-yellow-500 to-orange-500',
+              'from-indigo-500 to-purple-500',
+            ];
+
+            return {
+              name: scannerName,
+              status: 'active',
+              icon: icons[scannerKey as keyof typeof icons] || Search,
+              color: colors[index % colors.length],
+              progress:
+                isScanning &&
+                currentEngine.toLowerCase() === scannerName.toLowerCase()
+                  ? scanProgress
+                  : Math.floor(Math.random() * 30 + 70),
+              description:
+                response.descriptions[scannerKey] || 'Security Scanner',
+            };
           }
-          return prev + Math.random() * 15;
-        });
-      }, 1000);
+        );
 
-      return () => clearInterval(interval);
-    }
-  }, [isScanning]);
+        setAvailableEngines(engines);
+      } catch (error) {
+        console.error('Scanner bilgileri alınamadı:', error);
+        // Fallback olarak default scanners kullan
+        setAvailableEngines([
+          {
+            name: 'Nmap',
+            status: 'active',
+            icon: Network,
+            color: 'from-blue-500 to-cyan-500',
+            progress: 85,
+          },
+          {
+            name: 'Nuclei',
+            status: 'active',
+            icon: Bug,
+            color: 'from-green-500 to-emerald-500',
+            progress: 72,
+          },
+          {
+            name: 'ZAP',
+            status: 'active',
+            icon: Shield,
+            color: 'from-purple-500 to-pink-500',
+            progress: 63,
+          },
+          {
+            name: 'SQLMap',
+            status: 'active',
+            icon: Database,
+            color: 'from-red-500 to-orange-500',
+            progress: 91,
+          },
+          {
+            name: 'Nikto',
+            status: 'active',
+            icon: Search,
+            color: 'from-yellow-500 to-orange-500',
+            progress: 45,
+          },
+          {
+            name: 'XSS',
+            status: 'active',
+            icon: Code,
+            color: 'from-indigo-500 to-purple-500',
+            progress: 78,
+          },
+        ]);
+      }
+    };
 
-  // Mock threat detection
+    fetchScanners();
+  }, []);
+
+  // Gerçek tarama verileri için interval
   useEffect(() => {
-    if (isScanning) {
-      const threatInterval = setInterval(() => {
-        setDetectedThreats(prev => prev + Math.floor(Math.random() * 3));
+    let statusInterval: NodeJS.Timeout;
+
+    if (isScanning && currentScanId) {
+      statusInterval = setInterval(async () => {
+        try {
+          const statusResponse = await scanAPI.getScanStatus(currentScanId);
+          setScanProgress(statusResponse.progress);
+
+          // Engine adını güncelle (backend'den gelen mesaja göre)
+          if (
+            statusResponse.message &&
+            statusResponse.message.includes('tarayıcısı')
+          ) {
+            const engineMatch =
+              statusResponse.message.match(/(\w+) tarayıcısı/);
+            if (engineMatch) {
+              setCurrentEngine(engineMatch[1]);
+            }
+          }
+
+          if (statusResponse.status === 'completed') {
+            const resultsResponse = await scanAPI.getScanResults(currentScanId);
+            setVulnerabilities(resultsResponse.vulnerabilities);
+            setDetectedThreats(resultsResponse.vulnerabilities.length);
+
+            // Güvenlik skorunu hesapla
+            const criticalCount = resultsResponse.vulnerabilities.filter(
+              (v: any) => v.severity === 'critical'
+            ).length;
+            const highCount = resultsResponse.vulnerabilities.filter(
+              (v: any) => v.severity === 'high'
+            ).length;
+            const mediumCount = resultsResponse.vulnerabilities.filter(
+              (v: any) => v.severity === 'medium'
+            ).length;
+
+            const newScore =
+              100 - (criticalCount * 30 + highCount * 20 + mediumCount * 10);
+            setSecurityScore(Math.max(0, newScore));
+
+            setIsScanning(false);
+            clearInterval(statusInterval);
+          }
+        } catch (error) {
+          console.error('Tarama durumu kontrol hatası:', error);
+        }
       }, 2000);
-
-      return () => clearInterval(threatInterval);
     }
-  }, [isScanning]);
 
-  // Mock security score
-  useEffect(() => {
-    if (isScanning) {
-      const scoreInterval = setInterval(() => {
-        setSecurityScore(prev => Math.min(100, prev + Math.random() * 5));
-      }, 1500);
+    return () => {
+      if (statusInterval) clearInterval(statusInterval);
+    };
+  }, [isScanning, currentScanId]);
 
-      return () => clearInterval(scoreInterval);
-    }
-  }, [isScanning]);
-
-  // Mock active connections
-  useEffect(() => {
-    if (isScanning) {
-      const connectionInterval = setInterval(() => {
-        setActiveConnections(prev => Math.max(0, prev + Math.floor(Math.random() * 10) - 5));
-      }, 1000);
-
-      return () => clearInterval(connectionInterval);
-    }
-  }, [isScanning]);
-
-  // Mock engine switching
-  useEffect(() => {
-    if (isScanning) {
-      const engines = ['Nmap', 'Nuclei', 'ZAP', 'SQLMap', 'Nikto', 'Dirb'];
-      const engineInterval = setInterval(() => {
-        setCurrentEngine(engines[Math.floor(Math.random() * engines.length)]);
-      }, 3000);
-
-      return () => clearInterval(engineInterval);
-    }
-  }, [isScanning]);
-
-  const handleScanStart = () => {
+  const handleScanStart = async () => {
     if (!url) return;
-    setIsScanning(true);
-    setScanProgress(0);
-    setDetectedThreats(0);
-    setSecurityScore(0);
-    setActiveConnections(0);
-    console.log('Starting scan for:', url);
+
+    try {
+      setIsScanning(true);
+      setScanProgress(0);
+      setDetectedThreats(0);
+      setSecurityScore(100);
+      setActiveConnections(0);
+      setVulnerabilities([]);
+
+      console.log('Starting scan for:', url);
+
+      // Backend API'ye tarama başlatma isteği gönder
+      const response = await scanAPI.startScan(url, { scan_type: scanType });
+      setCurrentScanId(response.scan_id);
+
+      // Tarama durumunu takip et
+      const checkStatus = async () => {
+        if (!response.scan_id) return;
+
+        try {
+          const statusResponse = await scanAPI.getScanStatus(response.scan_id);
+          setScanProgress(statusResponse.progress);
+
+          if (statusResponse.status === 'completed') {
+            // Tarama tamamlandığında sonuçları al
+            const resultsResponse = await scanAPI.getScanResults(
+              response.scan_id
+            );
+            setVulnerabilities(resultsResponse.vulnerabilities);
+            setDetectedThreats(resultsResponse.vulnerabilities.length);
+
+            // Güvenlik skorunu hesapla
+            const criticalCount = resultsResponse.vulnerabilities.filter(
+              (v: any) => v.severity === 'critical'
+            ).length;
+            const highCount = resultsResponse.vulnerabilities.filter(
+              (v: any) => v.severity === 'high'
+            ).length;
+            const mediumCount = resultsResponse.vulnerabilities.filter(
+              (v: any) => v.severity === 'medium'
+            ).length;
+
+            const newScore =
+              100 - (criticalCount * 30 + highCount * 20 + mediumCount * 10);
+            setSecurityScore(Math.max(0, newScore));
+
+            setIsScanning(false);
+          } else if (statusResponse.status === 'failed') {
+            setIsScanning(false);
+            console.error('Tarama başarısız:', statusResponse.message);
+          }
+        } catch (error) {
+          console.error('Tarama durumu kontrol hatası:', error);
+        }
+      };
+
+      // Her 3 saniyede bir durumu kontrol et
+      const statusInterval = setInterval(checkStatus, 3000);
+
+      // 5 dakika sonra durumu kontrol etmeyi durdur
+      setTimeout(() => {
+        clearInterval(statusInterval);
+        if (isScanning) {
+          setIsScanning(false);
+        }
+      }, 300000);
+    } catch (error) {
+      console.error('Tarama başlatma hatası:', error);
+      setIsScanning(false);
+    }
   };
 
   const handleScanStop = () => {
     setIsScanning(false);
     setScanProgress(0);
+    setCurrentScanId(null);
   };
 
   const handleScanPause = () => {
@@ -170,32 +343,99 @@ export default function DashboardPage() {
     setIsScanning(true);
   };
 
-  const chartData = [
-    { name: 'Critical', value: 2, color: '#ef4444' },
-    { name: 'High', value: 5, color: '#f97316' },
-    { name: 'Medium', value: 8, color: '#22c55e' },
-    { name: 'Low', value: 12, color: '#3b82f6' },
-  ];
+  // Backend'den gelen gerçek verilerle chart dataları hesapla
+  const getChartData = () => {
+    if (vulnerabilities.length === 0) {
+      return [];
+    }
 
-  const severityDistribution = [
-    { severity: 'Critical', count: 2 },
-    { severity: 'High', count: 5 },
-    { severity: 'Medium', count: 8 },
-    { severity: 'Low', count: 12 },
-  ];
+    const criticalCount = vulnerabilities.filter(
+      (v) => v.severity === 'critical'
+    ).length;
+    const highCount = vulnerabilities.filter(
+      (v) => v.severity === 'high'
+    ).length;
+    const mediumCount = vulnerabilities.filter(
+      (v) => v.severity === 'medium'
+    ).length;
+    const lowCount = vulnerabilities.filter((v) => v.severity === 'low').length;
 
-  const realTimeData = [
-    { time: '00:00', threats: 0, score: 100 },
-    { time: '00:05', threats: 2, score: 95 },
-    { time: '00:10', threats: 5, score: 88 },
-    { time: '00:15', threats: 8, score: 82 },
-    { time: '00:20', threats: 12, score: 76 },
-    { time: '00:25', threats: 15, score: 70 },
-    { time: '00:30', threats: 18, score: 65 },
-    { time: '00:35', threats: 22, score: 60 },
-    { time: '00:40', threats: 25, score: 55 },
-    { time: '00:45', threats: 27, score: 50 },
-  ];
+    const data = [];
+    if (criticalCount > 0)
+      data.push({ name: 'Critical', value: criticalCount, color: '#ef4444' });
+    if (highCount > 0)
+      data.push({ name: 'High', value: highCount, color: '#f97316' });
+    if (mediumCount > 0)
+      data.push({ name: 'Medium', value: mediumCount, color: '#22c55e' });
+    if (lowCount > 0)
+      data.push({ name: 'Low', value: lowCount, color: '#3b82f6' });
+
+    return data;
+  };
+
+  const getSeverityDistribution = () => {
+    if (vulnerabilities.length === 0) {
+      return [
+        { severity: 'Critical', count: 0 },
+        { severity: 'High', count: 0 },
+        { severity: 'Medium', count: 0 },
+        { severity: 'Low', count: 0 },
+      ];
+    }
+
+    const criticalCount = vulnerabilities.filter(
+      (v) => v.severity === 'critical'
+    ).length;
+    const highCount = vulnerabilities.filter(
+      (v) => v.severity === 'high'
+    ).length;
+    const mediumCount = vulnerabilities.filter(
+      (v) => v.severity === 'medium'
+    ).length;
+    const lowCount = vulnerabilities.filter((v) => v.severity === 'low').length;
+
+    const total = vulnerabilities.length;
+
+    return [
+      {
+        severity: 'Critical',
+        count: criticalCount,
+        percentage: total > 0 ? Math.round((criticalCount / total) * 100) : 0,
+      },
+      {
+        severity: 'High',
+        count: highCount,
+        percentage: total > 0 ? Math.round((highCount / total) * 100) : 0,
+      },
+      {
+        severity: 'Medium',
+        count: mediumCount,
+        percentage: total > 0 ? Math.round((mediumCount / total) * 100) : 0,
+      },
+      {
+        severity: 'Low',
+        count: lowCount,
+        percentage: total > 0 ? Math.round((lowCount / total) * 100) : 0,
+      },
+    ];
+  };
+
+  const chartData = getChartData();
+  const severityDistribution = getSeverityDistribution();
+
+  // Gerçek zamanlı veri - tarama sırasında güncellenir
+  const getRealTimeData = () => {
+    const currentTime = new Date().toLocaleTimeString('tr-TR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    return [
+      { time: currentTime, threats: detectedThreats, score: securityScore },
+    ];
+  };
+
+  const realTimeData = getRealTimeData();
 
   const tabs = [
     { id: 'overview', label: 'OVERVIEW', icon: BarChart3 },
@@ -205,22 +445,45 @@ export default function DashboardPage() {
   ];
 
   const quickActions = [
-    { icon: Network, label: 'Network Scan', color: 'from-blue-500 to-cyan-500', description: 'Port scanning & service detection' },
-    { icon: Database, label: 'Database Audit', color: 'from-purple-500 to-pink-500', description: 'SQL injection & DB vulnerabilities' },
-    { icon: Bug, label: 'Vulnerability Check', color: 'from-green-500 to-emerald-500', description: 'CVE scanning & assessment' },
-    { icon: Lock, label: 'Security Test', color: 'from-red-500 to-orange-500', description: 'Authentication & authorization' },
-    { icon: Terminal, label: 'Command Injection', color: 'from-yellow-500 to-orange-500', description: 'OS command execution' },
-    { icon: Code2, label: 'Code Analysis', color: 'from-indigo-500 to-purple-500', description: 'Source code review' },
+    {
+      icon: Network,
+      label: 'Network Scan',
+      color: 'from-blue-500 to-cyan-500',
+      description: 'Port scanning & service detection',
+    },
+    {
+      icon: Database,
+      label: 'Database Audit',
+      color: 'from-purple-500 to-pink-500',
+      description: 'SQL injection & DB vulnerabilities',
+    },
+    {
+      icon: Bug,
+      label: 'Vulnerability Check',
+      color: 'from-green-500 to-emerald-500',
+      description: 'CVE scanning & assessment',
+    },
+    {
+      icon: Lock,
+      label: 'Security Test',
+      color: 'from-red-500 to-orange-500',
+      description: 'Authentication & authorization',
+    },
+    {
+      icon: Terminal,
+      label: 'Command Injection',
+      color: 'from-yellow-500 to-orange-500',
+      description: 'OS command execution',
+    },
+    {
+      icon: Code,
+      label: 'Code Analysis',
+      color: 'from-indigo-500 to-purple-500',
+      description: 'Source code review',
+    },
   ];
 
-  const scanningEngines = [
-    { name: 'Nmap', status: 'active', icon: Network, color: 'from-blue-500 to-cyan-500', progress: 85 },
-    { name: 'Nuclei', status: 'active', icon: Bug, color: 'from-green-500 to-emerald-500', progress: 72 },
-    { name: 'ZAP', status: 'active', icon: Shield, color: 'from-purple-500 to-pink-500', progress: 63 },
-    { name: 'SQLMap', status: 'active', icon: Database, color: 'from-red-500 to-orange-500', progress: 91 },
-    { name: 'Nikto', status: 'active', icon: Search, color: 'from-yellow-500 to-orange-500', progress: 45 },
-    { name: 'Dirb', status: 'active', icon: Folder, color: 'from-indigo-500 to-purple-500', progress: 78 },
-  ];
+  const scanningEngines = availableEngines;
 
   const navigationLinks = [
     { name: 'Home', href: '/' },
@@ -236,13 +499,11 @@ export default function DashboardPage() {
       {/* Background Effects */}
       <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-black to-gray-900"></div>
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.05),transparent_50%)]"></div>
-      
+
       {/* Animated Grid */}
       <div className="fixed inset-0 opacity-10">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.1)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
       </div>
-
-
 
       {/* Header */}
       <header className="relative z-10">
@@ -260,7 +521,9 @@ export default function DashboardPage() {
                 <span className="text-xl font-bold text-white">
                   SecurityScanner
                 </span>
-                <span className="text-xs text-gray-400 -mt-1">COMMAND CENTER</span>
+                <span className="text-xs text-gray-400 -mt-1">
+                  COMMAND CENTER
+                </span>
               </div>
             </div>
 
@@ -309,7 +572,8 @@ export default function DashboardPage() {
             <span className="text-white">COMMAND CENTER</span>
           </h1>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            Deploy advanced security scans and monitor real-time threat intelligence
+            Deploy advanced security scans and monitor real-time threat
+            intelligence
           </p>
         </motion.div>
 
@@ -332,11 +596,17 @@ export default function DashboardPage() {
               >
                 <Card className="bg-gray-900/50 border-gray-800 hover:border-gray-700 transition-all duration-300 backdrop-blur-sm h-full">
                   <CardContent className="p-4 text-center">
-                    <div className={`mx-auto w-12 h-12 bg-gradient-to-r ${action.color} rounded-xl p-3 mb-3 group-hover:scale-110 transition-transform duration-300`}>
+                    <div
+                      className={`mx-auto w-12 h-12 bg-gradient-to-r ${action.color} rounded-xl p-3 mb-3 group-hover:scale-110 transition-transform duration-300`}
+                    >
                       <action.icon className="h-6 w-6 text-white" />
                     </div>
-                    <h3 className="text-white font-bold text-sm mb-1">{action.label}</h3>
-                    <p className="text-xs text-gray-400">{action.description}</p>
+                    <h3 className="text-white font-bold text-sm mb-1">
+                      {action.label}
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      {action.description}
+                    </p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -360,7 +630,10 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <span className="text-2xl">DEPLOY SECURITY SCAN</span>
-                  <p className="text-sm text-gray-400 font-normal mt-1">Enter target URL to initiate comprehensive security assessment</p>
+                  <p className="text-sm text-gray-400 font-normal mt-1">
+                    Enter target URL to initiate comprehensive security
+                    assessment
+                  </p>
                 </div>
               </CardTitle>
             </CardHeader>
@@ -374,7 +647,16 @@ export default function DashboardPage() {
                     onChange={(e) => setUrl(e.target.value)}
                     className="flex-1 bg-gray-800 border-gray-700 text-white placeholder-gray-500 text-lg"
                   />
-                  <select 
+                  <select
+                    value={scanType}
+                    onChange={(e) => setScanType(e.target.value)}
+                    className="bg-gray-800 border-gray-700 text-white px-4 py-2 rounded-lg border"
+                  >
+                    <option value="quick">Quick Scan</option>
+                    <option value="standard">Standard Scan</option>
+                    <option value="full">Full Scan</option>
+                  </select>
+                  <select
                     value={scanMode}
                     onChange={(e) => setScanMode(e.target.value)}
                     className="bg-gray-800 border-gray-700 text-white px-4 py-2 rounded-lg border"
@@ -386,21 +668,38 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex space-x-4">
                   {!isScanning ? (
-                    <Button onClick={handleScanStart} disabled={!url} variant="premium" className="font-bold text-lg px-8 py-4">
+                    <Button
+                      onClick={handleScanStart}
+                      disabled={!url}
+                      variant="premium"
+                      className="font-bold text-lg px-8 py-4"
+                    >
                       <Zap className="mr-3 h-6 w-6" />
                       DEPLOY
                     </Button>
                   ) : (
                     <>
-                      <Button variant="destructive" onClick={handleScanStop} className="font-bold text-lg px-6 py-4">
+                      <Button
+                        variant="destructive"
+                        onClick={handleScanStop}
+                        className="font-bold text-lg px-6 py-4"
+                      >
                         <Square className="mr-3 h-6 w-6" />
                         STOP
                       </Button>
-                      <Button variant="outline" onClick={handleScanPause} className="font-bold text-lg px-6 py-4">
+                      <Button
+                        variant="outline"
+                        onClick={handleScanPause}
+                        className="font-bold text-lg px-6 py-4"
+                      >
                         <Pause className="mr-3 h-6 w-6" />
                         PAUSE
                       </Button>
-                      <Button variant="outline" onClick={handleScanResume} className="font-bold text-lg px-6 py-4">
+                      <Button
+                        variant="outline"
+                        onClick={handleScanResume}
+                        className="font-bold text-lg px-6 py-4"
+                      >
                         <Play className="mr-3 h-6 w-6" />
                         RESUME
                       </Button>
@@ -429,7 +728,9 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <span className="text-2xl">MISSION STATUS</span>
-                    <p className="text-sm text-gray-400 font-normal mt-1">Real-time scanning progress and threat detection</p>
+                    <p className="text-sm text-gray-400 font-normal mt-1">
+                      Real-time scanning progress and threat detection
+                    </p>
                   </div>
                 </CardTitle>
               </CardHeader>
@@ -438,8 +739,13 @@ export default function DashboardPage() {
                   {/* Progress Bar */}
                   <div className="lg:col-span-2 space-y-6">
                     <div className="flex justify-between text-lg text-gray-300">
-                      <span>Target: <span className="text-cyan-400 font-bold">{url}</span></span>
-                      <span className="text-cyan-400 font-black text-2xl">{Math.round(scanProgress)}%</span>
+                      <span>
+                        Target:{' '}
+                        <span className="text-cyan-400 font-bold">{url}</span>
+                      </span>
+                      <span className="text-cyan-400 font-black text-2xl">
+                        {Math.round(scanProgress)}%
+                      </span>
                     </div>
                     <div className="w-full bg-gray-800 rounded-full h-4 overflow-hidden">
                       <div
@@ -450,12 +756,28 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex justify-between text-sm text-gray-500">
-                      <span>ETA: {Math.max(0, Math.round((100 - scanProgress) / 10))} seconds</span>
-                      <span>Status: {scanProgress < 100 ? 'SCANNING' : 'COMPLETE'}</span>
+                      <span>
+                        ETA:{' '}
+                        {Math.max(0, Math.round((100 - scanProgress) / 10))}{' '}
+                        seconds
+                      </span>
+                      <span>
+                        Status: {scanProgress < 100 ? 'SCANNING' : 'COMPLETE'}
+                      </span>
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-400">
-                      <span>Mode: <span className="text-yellow-400 font-bold">{scanMode.toUpperCase()}</span></span>
-                      <span>Engine: <span className="text-blue-400 font-bold">{currentEngine}</span></span>
+                      <span>
+                        Mode:{' '}
+                        <span className="text-yellow-400 font-bold">
+                          {scanMode.toUpperCase()}
+                        </span>
+                      </span>
+                      <span>
+                        Engine:{' '}
+                        <span className="text-blue-400 font-bold">
+                          {currentEngine}
+                        </span>
+                      </span>
                     </div>
                   </div>
 
@@ -465,8 +787,12 @@ export default function DashboardPage() {
                       <div className="flex items-center space-x-3">
                         <AlertTriangle className="h-8 w-8 text-red-400" />
                         <div>
-                          <p className="text-sm text-gray-400">Threats Detected</p>
-                          <p className="text-2xl font-bold text-red-400">{detectedThreats}</p>
+                          <p className="text-sm text-gray-400">
+                            Threats Detected
+                          </p>
+                          <p className="text-2xl font-bold text-red-400">
+                            {detectedThreats}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -474,8 +800,12 @@ export default function DashboardPage() {
                       <div className="flex items-center space-x-3">
                         <ShieldCheck className="h-8 w-8 text-green-400" />
                         <div>
-                          <p className="text-sm text-gray-400">Security Score</p>
-                          <p className="text-2xl font-bold text-green-400">{Math.round(securityScore)}%</p>
+                          <p className="text-sm text-gray-400">
+                            Security Score
+                          </p>
+                          <p className="text-2xl font-bold text-green-400">
+                            {Math.round(securityScore)}%
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -483,8 +813,12 @@ export default function DashboardPage() {
                       <div className="flex items-center space-x-3">
                         <Signal className="h-8 w-8 text-blue-400" />
                         <div>
-                          <p className="text-sm text-gray-400">Active Connections</p>
-                          <p className="text-2xl font-bold text-blue-400">{activeConnections}</p>
+                          <p className="text-sm text-gray-400">
+                            Active Connections
+                          </p>
+                          <p className="text-2xl font-bold text-blue-400">
+                            {activeConnections}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -493,7 +827,9 @@ export default function DashboardPage() {
 
                 {/* Scanning Engines Progress */}
                 <div className="mt-8">
-                  <h3 className="text-xl font-bold text-white mb-4 text-center">SCANNING ENGINES STATUS</h3>
+                  <h3 className="text-xl font-bold text-white mb-4 text-center">
+                    SCANNING ENGINES STATUS
+                  </h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                     {scanningEngines.map((engine, index) => (
                       <motion.div
@@ -503,10 +839,14 @@ export default function DashboardPage() {
                         transition={{ duration: 0.5, delay: index * 0.1 }}
                         className="text-center"
                       >
-                        <div className={`mx-auto w-12 h-12 bg-gradient-to-r ${engine.color} rounded-xl p-3 mb-2`}>
+                        <div
+                          className={`mx-auto w-12 h-12 bg-gradient-to-r ${engine.color} rounded-xl p-3 mb-2`}
+                        >
                           <engine.icon className="h-6 w-6 text-white" />
                         </div>
-                        <p className="text-sm text-white font-medium mb-2">{engine.name}</p>
+                        <p className="text-sm text-white font-medium mb-2">
+                          {engine.name}
+                        </p>
                         <div className="w-full bg-gray-800 rounded-full h-2 mb-2">
                           <div
                             className="bg-gradient-to-r from-green-400 to-emerald-400 h-2 rounded-full transition-all duration-300"
@@ -515,7 +855,9 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex items-center justify-center space-x-1">
                           <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                          <span className="text-xs text-green-400">{engine.progress}%</span>
+                          <span className="text-xs text-green-400">
+                            {engine.progress}%
+                          </span>
                         </div>
                       </motion.div>
                     ))}
@@ -564,9 +906,19 @@ export default function DashboardPage() {
                       <AlertTriangle className="h-10 w-10 text-red-400" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-400">THREAT COUNT</p>
-                      <p className="text-4xl font-black text-white">27</p>
-                      <p className="text-xs text-red-400 font-bold">+3 NEW</p>
+                      <p className="text-sm font-medium text-gray-400">
+                        THREAT COUNT
+                      </p>
+                      <p className="text-4xl font-black text-white">
+                        {detectedThreats}
+                      </p>
+                      <p className="text-xs text-red-400 font-bold">
+                        {isScanning
+                          ? 'SCANNING...'
+                          : vulnerabilities.length > 0
+                            ? 'FOUND'
+                            : 'NONE'}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -579,9 +931,21 @@ export default function DashboardPage() {
                       <TrendingUp className="h-10 w-10 text-orange-400" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-400">SECURITY SCORE</p>
-                      <p className="text-4xl font-black text-white">94.2</p>
-                      <p className="text-xs text-green-400 font-bold">+2.1%</p>
+                      <p className="text-sm font-medium text-gray-400">
+                        SECURITY SCORE
+                      </p>
+                      <p className="text-4xl font-black text-white">
+                        {securityScore.toFixed(1)}
+                      </p>
+                      <p className="text-xs text-green-400 font-bold">
+                        {isScanning
+                          ? 'UPDATING...'
+                          : securityScore >= 80
+                            ? 'GOOD'
+                            : securityScore >= 60
+                              ? 'FAIR'
+                              : 'POOR'}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -594,9 +958,19 @@ export default function DashboardPage() {
                       <Clock className="h-10 w-10 text-blue-400" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-400">LAST SCAN</p>
-                      <p className="text-4xl font-black text-white">2h</p>
-                      <p className="text-xs text-blue-400 font-bold">AGO</p>
+                      <p className="text-sm font-medium text-gray-400">
+                        LAST SCAN
+                      </p>
+                      <p className="text-4xl font-black text-white">
+                        {currentScanId ? (isScanning ? 'NOW' : 'DONE') : 'NONE'}
+                      </p>
+                      <p className="text-xs text-blue-400 font-bold">
+                        {isScanning
+                          ? 'RUNNING'
+                          : currentScanId
+                            ? 'COMPLETED'
+                            : 'START SCAN'}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -609,9 +983,15 @@ export default function DashboardPage() {
                       <CheckCircle className="h-10 w-10 text-green-400" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-400">TARGETS</p>
-                      <p className="text-4xl font-black text-white">12</p>
-                      <p className="text-xs text-green-400 font-bold">SECURED</p>
+                      <p className="text-sm font-medium text-gray-400">
+                        TARGETS
+                      </p>
+                      <p className="text-4xl font-black text-white">
+                        {url ? '1' : '0'}
+                      </p>
+                      <p className="text-xs text-green-400 font-bold">
+                        {url ? 'READY' : 'SET TARGET'}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -622,43 +1002,67 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-white text-xl">THREAT DISTRIBUTION</CardTitle>
-                  <CardDescription className="text-gray-400">Vulnerability breakdown by severity level</CardDescription>
+                  <CardTitle className="text-white text-xl">
+                    THREAT DISTRIBUTION
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Vulnerability breakdown by severity level
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={chartData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#1F2937', 
-                          border: '1px solid #374151',
-                          borderRadius: '8px',
-                          color: '#F9FAFB'
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  {chartData.length === 0 ? (
+                    <div className="flex items-center justify-center h-[300px]">
+                      <div className="text-center">
+                        <Shield className="h-16 w-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-400 text-lg">
+                          No vulnerabilities detected
+                        </p>
+                        <p className="text-gray-500 text-sm">
+                          Run a scan to see threat distribution
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={chartData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) =>
+                            `${name} ${(percent * 100).toFixed(0)}%`
+                          }
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1F2937',
+                            border: '1px solid #374151',
+                            borderRadius: '8px',
+                            color: '#F9FAFB',
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </CardContent>
               </Card>
 
               <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-white text-xl">REAL-TIME THREAT TREND</CardTitle>
-                  <CardDescription className="text-gray-400">Live threat detection over time</CardDescription>
+                  <CardTitle className="text-white text-xl">
+                    REAL-TIME THREAT TREND
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Live threat detection over time
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -666,16 +1070,28 @@ export default function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis dataKey="time" stroke="#9CA3AF" />
                       <YAxis stroke="#9CA3AF" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#1F2937', 
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1F2937',
                           border: '1px solid #374151',
                           borderRadius: '8px',
-                          color: '#F9FAFB'
+                          color: '#F9FAFB',
                         }}
                       />
-                      <Area type="monotone" dataKey="threats" stroke="#ef4444" fill="#ef4444" fillOpacity={0.3} />
-                      <Area type="monotone" dataKey="score" stroke="#22c55e" fill="#22c55e" fillOpacity={0.3} />
+                      <Area
+                        type="monotone"
+                        dataKey="threats"
+                        stroke="#ef4444"
+                        fill="#ef4444"
+                        fillOpacity={0.3}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="score"
+                        stroke="#22c55e"
+                        fill="#22c55e"
+                        fillOpacity={0.3}
+                      />
                     </AreaChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -685,15 +1101,15 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'vulnerabilities' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="text-white text-2xl">DETECTED THREATS</CardTitle>
+                <CardTitle className="text-white text-2xl">
+                  DETECTED THREATS
+                </CardTitle>
                 <CardDescription className="text-gray-400 text-lg">
-                  {vulnerabilities.length} vulnerabilities identified in recent operations
+                  {vulnerabilities.length} vulnerabilities identified in recent
+                  operations
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -712,7 +1128,11 @@ export default function DashboardPage() {
                             <h3 className="font-bold text-white text-lg group-hover:text-cyan-400 transition-colors">
                               {vuln.title}
                             </h3>
-                            <span className={`px-4 py-2 rounded-full text-sm font-bold ${getSeverityColor(vuln.severity)}`}>
+                            <span
+                              className={`px-4 py-2 rounded-full text-sm font-bold ${getSeverityColor(
+                                vuln.severity
+                              )}`}
+                            >
                               {formatSeverity(vuln.severity)}
                             </span>
                           </div>
@@ -722,19 +1142,27 @@ export default function DashboardPage() {
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div className="bg-gray-800/50 p-3 rounded-lg">
                               <span className="text-gray-500">CVE:</span>
-                              <span className="text-white ml-2 font-mono">{vuln.cve}</span>
+                              <span className="text-white ml-2 font-mono">
+                                {vuln.cve}
+                              </span>
                             </div>
                             <div className="bg-gray-800/50 p-3 rounded-lg">
                               <span className="text-gray-500">CVSS:</span>
-                              <span className="text-white ml-2 font-bold">{vuln.cvss}</span>
+                              <span className="text-white ml-2 font-bold">
+                                {vuln.cvss}
+                              </span>
                             </div>
                             <div className="bg-gray-800/50 p-3 rounded-lg">
                               <span className="text-gray-500">Type:</span>
-                              <span className="text-white ml-2">{vuln.type}</span>
+                              <span className="text-white ml-2">
+                                {vuln.type}
+                              </span>
                             </div>
                             <div className="bg-gray-800/50 p-3 rounded-lg">
                               <span className="text-gray-500">Location:</span>
-                              <span className="text-white ml-2 font-mono">{vuln.location}</span>
+                              <span className="text-white ml-2 font-mono">
+                                {vuln.location}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -751,13 +1179,12 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'reports' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="text-white text-2xl">INTELLIGENCE REPORTS</CardTitle>
+                <CardTitle className="text-white text-2xl">
+                  INTELLIGENCE REPORTS
+                </CardTitle>
                 <CardDescription className="text-gray-400 text-lg">
                   Generate and download detailed security intelligence reports
                 </CardDescription>
@@ -765,23 +1192,38 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <motion.div whileHover={{ y: -10, scale: 1.05 }}>
-                    <Button variant="outline" className="h-32 w-full flex-col space-y-3 bg-gray-800/50 border-gray-700 hover:border-blue-500 hover:bg-gray-800 text-lg">
+                    <Button
+                      variant="outline"
+                      className="h-32 w-full flex-col space-y-3 bg-gray-800/50 border-gray-700 hover:border-blue-500 hover:bg-gray-800 text-lg"
+                    >
                       <Download className="h-10 w-10" />
                       <span className="font-bold">PDF REPORT</span>
-                      <span className="text-sm text-gray-400">Professional format</span>
+                      <span className="text-sm text-gray-400">
+                        Professional format
+                      </span>
                     </Button>
                   </motion.div>
                   <motion.div whileHover={{ y: -10, scale: 1.05 }}>
-                    <Button variant="outline" className="h-32 w-full flex-col space-y-3 bg-gray-800/50 border-gray-700 hover:border-blue-500 hover:bg-gray-800 text-lg">
+                    <Button
+                      variant="outline"
+                      className="h-32 w-full flex-col space-y-3 bg-gray-800/50 border-gray-700 hover:border-blue-500 hover:bg-gray-800 text-lg"
+                    >
                       <Download className="h-10 w-10" />
-                      <span className="text-sm text-gray-400">Data analysis</span>
+                      <span className="text-sm text-gray-400">
+                        Data analysis
+                      </span>
                       <span className="font-bold">EXCEL REPORT</span>
                     </Button>
                   </motion.div>
                   <motion.div whileHover={{ y: -10, scale: 1.05 }}>
-                    <Button variant="outline" className="h-32 w-full flex-col space-y-3 bg-gray-800/50 border-gray-700 hover:border-blue-500 hover:bg-gray-800 text-lg">
+                    <Button
+                      variant="outline"
+                      className="h-32 w-full flex-col space-y-3 bg-gray-800/50 border-gray-700 hover:border-blue-500 hover:bg-gray-800 text-lg"
+                    >
                       <Download className="h-10 w-10" />
-                      <span className="text-sm text-gray-400">API integration</span>
+                      <span className="text-sm text-gray-400">
+                        API integration
+                      </span>
                       <span className="font-bold">JSON REPORT</span>
                     </Button>
                   </motion.div>
@@ -814,28 +1256,36 @@ export default function DashboardPage() {
                     <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-4 mx-auto mb-4">
                       <SignalHigh className="h-8 w-8 text-white" />
                     </div>
-                    <h3 className="text-white font-bold text-lg mb-2">Network Status</h3>
+                    <h3 className="text-white font-bold text-lg mb-2">
+                      Network Status
+                    </h3>
                     <p className="text-green-400 text-sm">STABLE</p>
                   </div>
                   <div className="bg-gray-800/50 p-6 rounded-xl text-center">
                     <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl p-4 mx-auto mb-4">
                       <Server className="h-8 w-8 text-white" />
                     </div>
-                    <h3 className="text-white font-bold text-lg mb-2">Server Load</h3>
+                    <h3 className="text-white font-bold text-lg mb-2">
+                      Server Load
+                    </h3>
                     <p className="text-blue-400 text-sm">45%</p>
                   </div>
                   <div className="bg-gray-800/50 p-6 rounded-xl text-center">
                     <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl p-4 mx-auto mb-4">
                       <Users className="h-8 w-8 text-white" />
                     </div>
-                    <h3 className="text-white font-bold text-lg mb-2">Active Users</h3>
+                    <h3 className="text-white font-bold text-lg mb-2">
+                      Active Users
+                    </h3>
                     <p className="text-purple-400 text-sm">1,247</p>
                   </div>
                   <div className="bg-gray-800/50 p-6 rounded-xl text-center">
                     <div className="w-16 h-16 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-2xl p-4 mx-auto mb-4">
                       <Globe className="h-8 w-8 text-white" />
                     </div>
-                    <h3 className="text-white font-bold text-lg mb-2">Global Coverage</h3>
+                    <h3 className="text-white font-bold text-lg mb-2">
+                      Global Coverage
+                    </h3>
                     <p className="text-yellow-400 text-sm">89%</p>
                   </div>
                 </div>
@@ -864,7 +1314,9 @@ export default function DashboardPage() {
                       <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
                       <span className="text-white">API Services</span>
                     </div>
-                    <span className="text-green-400 font-bold">OPERATIONAL</span>
+                    <span className="text-green-400 font-bold">
+                      OPERATIONAL
+                    </span>
                   </div>
                   <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg">
                     <div className="flex items-center space-x-3">

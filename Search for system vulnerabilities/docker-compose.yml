@@ -1,57 +1,93 @@
-version: '3.8'
+name: guard-mash-app-containers
 
 services:
-  # MSSQL Database
-  mssql:
-    image: mcr.microsoft.com/mssql/server:2019-latest
+  # PostgreSQL Database
+  guardmesh-postgres:
+    image: postgres:15-alpine
+    container_name: guardmesh-postgres
     environment:
-      - ACCEPT_EULA=Y
-      - SA_PASSWORD=YourStrong@Passw0rd
-      - MSSQL_PID=Express
+      - POSTGRES_DB=guardmesh_db
+      - POSTGRES_USER=guardmesh_user
+      - POSTGRES_PASSWORD=secure_password_2024
     ports:
-      - "1433:1433"
+      - '5432:5432'
     volumes:
-      - mssql_data:/var/opt/mssql
+      - guardmesh_postgres_data:/var/lib/postgresql/data
     networks:
-      - security_scanner_network
+      - guardmesh_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U guardmesh_user -d guardmesh_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Redis for Celery
-  redis:
+  guardmesh-redis:
     image: redis:7-alpine
+    container_name: guardmesh-redis
     ports:
-      - "6379:6379"
+      - '6379:6379'
     networks:
-      - security_scanner_network
+      - guardmesh_network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   # Backend API
-  backend:
-    build: ./backend
+  guardmesh-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: guardmesh-image:backend
+    container_name: guardmesh-backend
     ports:
-      - "8000:8000"
+      - '8000:8000'
     environment:
-      - DATABASE_URL=mssql+pyodbc://sa:YourStrong@Passw0rd@mssql:1433/security_scanner?driver=ODBC+Driver+17+for+SQL+Server
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://guardmesh_user:secure_password_2024@guardmesh-postgres:5432/guardmesh_db
+      # - REDIS_URL=redis://guardmesh-redis:6379
+      - SECRET_KEY=guardmesh-secret-key-2024
+      - DEBUG=True
     depends_on:
-      - mssql
-      - redis
+      guardmesh-postgres:
+        condition: service_healthy
+      # guardmesh-redis:
+      #   condition: service_healthy
     networks:
-      - security_scanner_network
-    volumes:
-      - ./scanners:/app/scanners
+      - guardmesh_network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Frontend
-  frontend:
-    build: ./frontend
+  guardmesh-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: guardmesh-image:frontend
+    container_name: guardmesh-frontend
     ports:
-      - "3000:3000"
+      - '3000:3000'
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
-      - backend
+      - guardmesh-backend
     networks:
-      - security_scanner_network
+      - guardmesh_network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
-  mssql_data:
+  guardmesh_postgres_data:
 
 networks:
-  security_scanner_network:
+  guardmesh_network:
     driver: bridge
